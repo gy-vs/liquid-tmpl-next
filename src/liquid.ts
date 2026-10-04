@@ -6,6 +6,7 @@ import { Render } from './render'
 import { Parser } from './parser'
 import { tags } from './tags'
 import { filters } from './filters'
+import DocTag, { parseDocBody, Doc } from './tags/doc'
 import { LiquidOptions, normalizeDirectoryList, NormalizedFullOptions, normalize, RenderOptions, RenderFileOptions } from './liquid-options'
 
 export class Liquid {
@@ -28,6 +29,19 @@ export class Liquid {
   public parse (html: string, filepath?: string): Template[] {
     const parser = new Parser(this)
     return parser.parse(html, filepath)
+  }
+
+  /**
+   * Parse the documentation in a `{% doc %}` tag. Accepts a template string
+   * or the templates returned by {@link parse}. Returns `undefined` when the
+   * template does not contain a built-in `doc` tag.
+   */
+  public parseDoc (source: string | Template[]): Doc | undefined {
+    const templates = isString(source) ? this.parse(source) : source
+    for (const template of templates) {
+      if (template instanceof DocTag) return parseDocBody(template.body)
+    }
+    return undefined
   }
 
   public _render (tpl: Template[], scope: Context | object | undefined, renderOptions: RenderOptions): IterableIterator<any> {

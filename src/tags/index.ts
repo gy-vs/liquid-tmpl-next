@@ -19,6 +19,7 @@ import ContinueTag from './continue'
 import EchoTag from './echo'
 import LiquidTag from './liquid'
 import InlineCommentTag from './inline-comment'
+import DocTag from './doc'
 import type { TagClass } from '../template/tag'
 
 export const tags: Record<string, TagClass> = {
@@ -42,7 +43,10 @@ export const tags: Record<string, TagClass> = {
   'continue': ContinueTag,
   echo: EchoTag,
   liquid: LiquidTag,
-  '#': InlineCommentTag
+  '#': InlineCommentTag,
+  doc: DocTag
 }
 
-export { AssignTag, ForTag, CaptureTag, CaseTag, CommentTag, IncludeTag, RenderTag, DecrementTag, IncrementTag, CycleTag, IfTag, LayoutTag, BlockTag, RawTag, TablerowTag, UnlessTag, BreakTag, ContinueTag, EchoTag, LiquidTag, InlineCommentTag }
+export { AssignTag, ForTag, CaptureTag, CaseTag, CommentTag, IncludeTag, RenderTag, DecrementTag, IncrementTag, CycleTag, IfTag, LayoutTag, BlockTag, RawTag, TablerowTag, UnlessTag, BreakTag, ContinueTag, EchoTag, LiquidTag, InlineCommentTag, DocTag }
+export type { Doc, DocParam } from './doc'
+export { parseDocBody } from './doc'

@@ -6,6 +6,7 @@ import { Template, Output, HTML } from '../template'
 import { LiquidCache } from '../cache'
 import { FS, Loader, LookupType } from '../fs'
 import { LiquidError, LiquidErrors } from '../util/error'
+import type { TagClass } from '../template/tag'
 import type { Liquid } from '../liquid'
 
 export class Parser {
@@ -16,6 +17,8 @@ export class Parser {
   private cache?: LiquidCache
   private loader: Loader
   private parseLimit: Limiter
+  private blockDepth = 0
+  private docSeen = false
 
   public constructor (liquid: Liquid) {
     this.liquid = liquid
@@ -28,9 +31,17 @@ export class Parser {
   public parse (html: string, filepath?: string): Template[] {
     html = String(html)
     this.parseLimit.use(html.length)
+    this.docSeen = false
     const tokenizer = new Tokenizer(html, this.liquid.options.operators, filepath)
-    const tokens = tokenizer.readTopLevelTokens(this.liquid.options)
+    const tokens = tokenizer.readTopLevelTokens(this.liquid.options, this.rawBlockNames())
     return this.parseTokens(tokens)
+  }
+  private rawBlockNames (): string[] {
+    const names: string[] = []
+    for (const name of Object.keys(this.liquid.tags)) {
+      if ((this.liquid.tags[name] as TagClass & { rawBlock?: boolean }).rawBlock) names.push(name)
+    }
+    return names
   }
   public parseTokens (tokens: TopLevelToken[]) {
     let token
@@ -52,7 +63,17 @@ export class Parser {
       if (isTagToken(token)) {
         const TagClass = this.liquid.tags[token.name]
         assert(TagClass, `tag "${token.name}" not found`)
-        return new TagClass(token, remainTokens, this.liquid, this)
+        if ((TagClass as TagClass & { rawBlock?: boolean }).rawBlock && token.name === 'doc') {
+          assert(!this.blockDepth, `tag ${token.getText()} must be at the top level`)
+          assert(!this.docSeen, `tag ${token.getText()} must appear only once`)
+          this.docSeen = true
+        }
+        this.blockDepth++
+        try {
+          return new TagClass(token, remainTokens, this.liquid, this)
+        } finally {
+          this.blockDepth--
+        }
       }
       if (isOutputToken(token)) {
         return new Output(token as OutputToken, this.liquid)

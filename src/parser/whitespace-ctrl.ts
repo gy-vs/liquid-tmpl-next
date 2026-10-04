@@ -2,7 +2,8 @@ import { Token } from '../tokens'
 import { NormalizedFullOptions } from '../liquid-options'
 import { isTagToken, isHTMLToken, isDelimitedToken, TYPES, INLINE_BLANK, BLANK } from '../util'
 
-export function whiteSpaceCtrl (tokens: Token[], options: NormalizedFullOptions) {
+export function whiteSpaceCtrl (tokens: Token[], options: NormalizedFullOptions, rawBlockNames: string[] = ['raw']) {
+  const endNames = new Set(rawBlockNames.map(name => 'end' + name))
   let inRaw = false
 
   for (let i = 0; i < tokens.length; i++) {
@@ -13,8 +14,8 @@ export function whiteSpaceCtrl (tokens: Token[], options: NormalizedFullOptions)
     }
 
     if (isTagToken(token)) {
-      if (token.name === 'raw') inRaw = true
-      else if (token.name === 'endraw') inRaw = false
+      if (!inRaw && rawBlockNames.includes(token.name)) inRaw = true
+      else if (inRaw && endNames.has(token.name)) inRaw = false
     }
 
     if (!inRaw && token.trimRight) {
