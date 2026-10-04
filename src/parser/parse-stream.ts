@@ -10,7 +10,7 @@ export class ParseStream<T extends Token = TopLevelToken> {
   private stopRequested = false
   private parseToken: ParseToken<T>
 
-  public constructor (tokens: T[], parseToken: ParseToken<T>) {
+  public constructor (tokens: T[], parseToken: ParseToken<T>, private onDone?: () => void) {
     this.tokens = tokens
     this.parseToken = parseToken
   }
@@ -25,15 +25,19 @@ export class ParseStream<T extends Token = TopLevelToken> {
   public start () {
     this.trigger('start')
     let token: T | undefined
-    while (!this.stopRequested && (token = this.tokens.shift())) {
-      if (this.trigger('token', token)) continue
-      if (isTagToken(token) && this.trigger(`tag:${token.name}`, token)) {
-        continue
+    try {
+      while (!this.stopRequested && (token = this.tokens.shift())) {
+        if (this.trigger('token', token)) continue
+        if (isTagToken(token) && this.trigger(`tag:${token.name}`, token)) {
+          continue
+        }
+        const template = this.parseToken(token, this.tokens)
+        this.trigger('template', template)
       }
-      const template = this.parseToken(token, this.tokens)
-      this.trigger('template', template)
+      if (!this.stopRequested) this.trigger('end')
+    } finally {
+      this.onDone?.()
     }
-    if (!this.stopRequested) this.trigger('end')
     return this
   }
   public stop () {

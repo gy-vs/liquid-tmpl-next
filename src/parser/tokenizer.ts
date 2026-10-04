@@ -10,6 +10,7 @@ export class Tokenizer {
   p: number
   N: number
   private rawBeginAt = -1
+  private rawBlockName = ''
   private opTrie: Trie<OperatorHandler>
   private literalTrie: Trie<LiteralValue>
 
@@ -17,7 +18,8 @@ export class Tokenizer {
     public input: string,
     operators: Operators = defaultOptions.operators,
     public file?: string,
-    range?: [number, number]
+    range?: [number, number],
+    private rawBlockTags: string[] = ['raw']
   ) {
     this.p = range ? range[0] : 0
     this.N = range ? range[1] : input.length
@@ -126,7 +128,7 @@ export class Tokenizer {
 
   readTopLevelToken (options: NormalizedFullOptions): TopLevelToken {
     const { tagDelimiterLeft, outputDelimiterLeft } = options
-    if (this.rawBeginAt > -1) return this.readEndrawOrRawContent(options)
+    if (this.rawBeginAt > -1) return this.readEndBlockOrRawContent(options)
     if (this.match(tagDelimiterLeft)) return this.readTagToken(options)
     if (this.match(outputDelimiterLeft)) return this.readOutputToken(options)
     return this.readHTMLToken([tagDelimiterLeft, outputDelimiterLeft])
@@ -148,7 +150,11 @@ export class Tokenizer {
       throw this.error(`tag ${this.snapshot(begin)} not closed`, begin)
     }
     const token = new TagToken(input, begin, this.p, options, file)
-    if (token.name === 'raw') this.rawBeginAt = begin
+    const blockIndex = this.rawBlockTags.indexOf(token.name)
+    if (blockIndex > -1) {
+      this.rawBeginAt = begin
+      this.rawBlockName = this.rawBlockTags[blockIndex]
+    }
     return token
   }
 
@@ -175,12 +181,13 @@ export class Tokenizer {
     return new OutputToken(input, begin, this.p, options, file)
   }
 
-  readEndrawOrRawContent (options: NormalizedFullOptions): HTMLToken | TagToken {
+  readEndBlockOrRawContent (options: NormalizedFullOptions): HTMLToken | TagToken {
     const { tagDelimiterLeft, tagDelimiterRight } = options
+    const endTagName = 'end' + this.rawBlockName
     const begin = this.p
     let leftPos = this.readTo(tagDelimiterLeft) - tagDelimiterLeft.length
     while (this.p < this.N) {
-      if (this.readIdentifier().getText() !== 'endraw') {
+      if (this.readEndTagName(endTagName) !== endTagName) {
         leftPos = this.readTo(tagDelimiterLeft) - tagDelimiterLeft.length
         continue
       }
@@ -189,6 +196,7 @@ export class Tokenizer {
           const end = this.p
           if (begin === leftPos) {
             this.rawBeginAt = -1
+            this.rawBlockName = ''
             return new TagToken(this.input, begin, end, options, this.file)
           } else {
             this.p = leftPos
@@ -199,7 +207,33 @@ export class Tokenizer {
         this.p++
       }
     }
-    throw this.error(`raw ${this.snapshot(this.rawBeginAt)} not closed`, begin)
+    throw this.error(`${this.rawBlockName} ${this.snapshot(this.rawBeginAt)} not closed`, begin)
+  }
+
+  /**
+   * Read the name of an end tag right after the left delimiter, accepting the
+   * whitespace control marker (e.g. `{%- endraw %}`). Returns the tag name
+   * when it matches `name`, or an empty string otherwise.
+   */
+  private readEndTagName (name: string): string {
+    this.skipBlank()
+    if (this.peek() === '-') this.p++
+    this.skipBlank()
+    const begin = this.p
+    for (let i = 0; i < name.length; i++) {
+      if (this.peek(i) !== name[i]) {
+        this.p = begin
+        return ''
+      }
+    }
+    const after = this.peek(name.length)
+    // a longer identifier means this is a different tag
+    if (isWord(after)) {
+      this.p = begin
+      return ''
+    }
+    this.p += name.length
+    return name
   }
 
   readLiquidTagTokens (options: NormalizedFullOptions = defaultOptions): LiquidTagToken[] {

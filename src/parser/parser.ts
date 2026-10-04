@@ -1,4 +1,4 @@
-import { Limiter, toPromise, assert, isTagToken, isOutputToken, ParseError } from '../util'
+import { Limiter, toPromise, assert, isTagToken, isOutputToken, ParseError, docTagSymbol, builtinRawBlockTags } from '../util'
 import { Tokenizer } from './tokenizer'
 import { ParseStream } from './parse-stream'
 import { TopLevelToken, OutputToken } from '../tokens'
@@ -10,6 +10,11 @@ import type { Liquid } from '../liquid'
 
 export class Parser {
   public parseFile: (file: string, sync?: boolean, type?: LookupType, currentFile?: string) => Generator<unknown, Template[], Template[] | string>
+
+  /** Depth of block tags (if/for/...) currently being parsed; 0 at top level). */
+  public blockDepth = 0
+  /** Whether a `{% doc %}` block has already been seen during the current parse. */
+  public docSeen = false
 
   private liquid: Liquid
   private fs: FS
@@ -28,7 +33,9 @@ export class Parser {
   public parse (html: string, filepath?: string): Template[] {
     html = String(html)
     this.parseLimit.use(html.length)
-    const tokenizer = new Tokenizer(html, this.liquid.options.operators, filepath)
+    this.blockDepth = 0
+    this.docSeen = false
+    const tokenizer = new Tokenizer(html, this.liquid.options.operators, filepath, undefined, this.rawBlockTags())
     const tokens = tokenizer.readTopLevelTokens(this.liquid.options)
     return this.parseTokens(tokens)
   }
@@ -64,7 +71,18 @@ export class Parser {
     }
   }
   public parseStream (tokens: TopLevelToken[]) {
-    return new ParseStream(tokens, (token, tokens) => this.parseToken(token, tokens))
+    this.blockDepth++
+    return new ParseStream(tokens, (token, tokens) => this.parseToken(token, tokens), () => this.blockDepth--)
+  }
+  /**
+   * Tag names whose bodies should be tokenized verbatim (no Liquid parsing).
+   * `doc` is included only while the built-in doc tag is in effect, so that a
+   * user-registered `doc` tag keeps the normal tokenization behavior.
+   */
+  private rawBlockTags (): string[] {
+    return (this.liquid.tags.doc as any)?.[docTagSymbol]
+      ? [...builtinRawBlockTags]
+      : ['raw']
   }
   private * _parseFileCached (file: string, sync?: boolean, type: LookupType = LookupType.Root, currentFile?: string): Generator<unknown, Template[], Template[]> {
     const cache = this.cache!

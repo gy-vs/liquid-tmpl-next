@@ -1,10 +1,12 @@
 import { Context } from './context'
-import { toPromise, toValueSync, isFunction, forOwn, isString, strictUniq } from './util'
+import { toPromise, toValueSync, isFunction, forOwn, isString, strictUniq, docBodySymbol } from './util'
 import { TagClass, createTagClass, TagImplOptions, FilterImplOptions, Template, Value, StaticAnalysisOptions, StaticAnalysis, analyze, analyzeSync, SegmentArray } from './template'
 import { LookupType } from './fs/loader'
 import { Render } from './render'
 import { Parser } from './parser'
-import { tags } from './tags'
+import { tags, DocTag } from './tags'
+import type { DocInfo } from './tags'
+import { parseDocContent } from './tags/doc'
 import { filters } from './filters'
 import { LiquidOptions, normalizeDirectoryList, NormalizedFullOptions, normalize, RenderOptions, RenderFileOptions } from './liquid-options'
 
@@ -28,6 +30,23 @@ export class Liquid {
   public parse (html: string, filepath?: string): Template[] {
     const parser = new Parser(this)
     return parser.parse(html, filepath)
+  }
+
+  /**
+   * Parse the `{% doc %}` block of a snippet.
+   *
+   * Accepts either a template string (which is parsed with the same rules as
+   * {@link parse}) or an already parsed template array. Returns `undefined`
+   * when the template contains no doc block.
+   */
+  public parseDoc (source: string | Template[]): DocInfo | undefined {
+    const templates = isString(source) ? this.parse(source) : source
+    for (const template of templates) {
+      if (template instanceof DocTag) {
+        return parseDocContent(template[docBodySymbol])
+      }
+    }
+    return undefined
   }
 
   public _render (tpl: Template[], scope: Context | object | undefined, renderOptions: RenderOptions): IterableIterator<any> {
